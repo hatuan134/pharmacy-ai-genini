@@ -44,11 +44,12 @@ export default function AIChat({user,MarkdownMessage}){
     await ask(null,messages[index-1].content,messages.slice(0,index-1));
   }
   function vote(m,value){setMessages(old=>old.map(x=>x.id===m.id?{...x,feedback:x.feedback===value?0:value}:x))}
-  async function copy(m){try{await navigator.clipboard.writeText(m.content);setCopied(m.id);setTimeout(()=>setCopied(null),1800)}catch{setError('Không thể sao chép tự động. Bạn có thể chọn nội dung và nhấn Ctrl+C.')}}
+  function cleanAssistantText(text){return String(text??'').replace(/^\s*\*\s+/gm,'- ').replace(/\*/g,'')}
+  async function copy(m){try{await navigator.clipboard.writeText(cleanAssistantText(m.content));setCopied(m.id);setTimeout(()=>setCopied(null),1800)}catch{setError('Không thể sao chép tự động. Bạn có thể chọn nội dung và nhấn Ctrl+C.')}}
   const suggestions=['Tình hình Paracetamol thế nào?','Thuốc nào tồn nhiều, bán chậm và gần hết hạn?','Thuốc nào chênh lệch giá nhập giữa các lô nhiều nhất?','Quy trình xử lý lô hết hạn'];
   return <div className="ai-workspace session-only">
     <section className="chat-shell panel agent-chat">
-      <div className="chat-head"><div className="ai-avatar"><Bot/></div><div><h2>An Tâm AI</h2><p>Tra cứu nội bộ · Nội dung chat không được lưu lại</p></div><button type="button" className="new-chat" disabled={busy} onClick={fresh}>Làm mới</button><span className="agent-status">{busy?'Đang trả lời':'Sẵn sàng'}</span></div>
+      <div className="chat-head"><div className="ai-avatar"><Bot/></div><div><h2>An Tâm AI</h2><p>Tra cứu nội bộ</p></div><button type="button" className="new-chat" disabled={busy} onClick={fresh}>Làm mới</button><span className="agent-status">{busy?'Đang trả lời':'Sẵn sàng'}</span></div>
       <div className="chat-body" aria-live="polite">
         {!messages.length&&<div className="ai-welcome"><div className="ai-avatar"><Sparkles size={30}/></div><h2>Tôi có thể giúp gì cho {user.name}?</h2><p>Hỏi về thuốc, tồn kho, doanh thu hoặc quy trình. Bạn có thể tiếp tục hỏi về cùng một thuốc trong cuộc trò chuyện.</p><div className="welcome-prompts">{suggestions.map(s=><button key={s} disabled={busy} onClick={()=>ask(null,s)}>{s}<span>↗</span></button>)}</div></div>}
         {messages.map((m,i)=><div key={m.clientId||m.id||i} className={'chat-row '+m.role}><div className="chat-bubble">

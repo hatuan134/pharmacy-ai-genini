@@ -9,11 +9,12 @@ const roles={manager:'Quản lý',pharmacist:'Dược sĩ',cashier:'Thu ngân'};
 
 function renderInlineMarkdown(text){
   const value=String(text??'');
+  const cleanPlain=value=>String(value??'').replace(/\*/g,'');
   const parts=[];
   const re=/(\*\*[^*\n]+\*\*|\*[^*\n]+\*|`[^`\n]+`)/g;
   let last=0,match,index=0;
   while((match=re.exec(value))!==null){
-    if(match.index>last)parts.push(value.slice(last,match.index));
+    if(match.index>last)parts.push(cleanPlain(value.slice(last,match.index)));
     const token=match[0];
     if(token.startsWith('**'))parts.push(<strong key={'b'+index}>{token.slice(2,-2)}</strong>);
     else if(token.startsWith('*'))parts.push(<em key={'i'+index}>{token.slice(1,-1)}</em>);
@@ -21,7 +22,7 @@ function renderInlineMarkdown(text){
     last=match.index+token.length;
     index+=1;
   }
-  if(last<value.length)parts.push(value.slice(last));
+  if(last<value.length)parts.push(cleanPlain(value.slice(last)));
   return parts;
 }
 
@@ -51,7 +52,7 @@ function MarkdownMessage({text}){
 
     const line=rawLine.trimEnd();
     const ordered=line.match(/^\s*\d+[.)]\s+(.+)$/);
-    const bullet=line.match(/^\s*[-•]\s+(.+)$/);
+    const bullet=line.match(/^\s*[-•*]\s+(.+)$/);
     if(ordered){
       if(listType&&listType!=='ol')flushList();
       listType='ol';

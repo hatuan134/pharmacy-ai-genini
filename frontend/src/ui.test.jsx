@@ -44,6 +44,22 @@ it('AI renders a Markdown table safely',async()=>{
   await screen.findByRole('table');expect(screen.getByRole('cell',{name:'150'})).toBeTruthy();
 });
 
+
+it('AI header omits chat persistence note and hides stray asterisks',async()=>{
+  streamApi.mockImplementation(async(path,options,event)=>{
+    event({type:'message',id:2});
+    event({type:'delta',text:'Quy trình\n* Bước một\nNội dung bị dư dấu*'});
+    event({type:'done',status:'ok'});
+  });
+  render(<AI user={user}/>);
+  expect(screen.getByText('Tra cứu nội bộ')).toBeTruthy();
+  expect(screen.queryByText(/Nội dung chat không được lưu lại/)).toBeNull();
+  fireEvent.change(screen.getByPlaceholderText('Nhắn tin cho An Tâm AI…'),{target:{value:'Quy trình?'}});
+  fireEvent.click(screen.getByRole('button',{name:'Gửi'}));
+  await screen.findByText('Bước một');
+  expect(screen.getByText('Nội dung bị dư dấu').textContent).not.toContain('*');
+});
+
 it('password eyes toggle independently and never submit',()=>{
   render(<SettingsPage user={user}/>);
   const old=screen.getByLabelText('Mật khẩu hiện tại'),next=screen.getByLabelText('Mật khẩu mới');
