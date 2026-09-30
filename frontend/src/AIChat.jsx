@@ -57,12 +57,18 @@ export default function AIChat({user,MarkdownMessage}){
       .replace(/^\s*[-•]\s*Đề xuất xử lý\s*:?\s*$/gmi,'### Đề xuất xử lý')
   }
   async function copy(m){try{await navigator.clipboard.writeText(cleanAssistantText(m.content));setCopied(m.id);setTimeout(()=>setCopied(null),1800)}catch{setError('Không thể sao chép tự động. Bạn có thể chọn nội dung và nhấn Ctrl+C.')}}
-  const suggestions=['Tình hình Paracetamol thế nào?','Thuốc nào tồn nhiều, bán chậm và gần hết hạn?','Thuốc nào chênh lệch giá nhập giữa các lô nhiều nhất?','Quy trình xử lý lô hết hạn'];
+  const roleInfo={
+    manager:{scope:'Toàn quyền tra cứu AI: thuốc, kho, giá nhập, nhà cung cấp, doanh thu, hóa đơn, tài khoản và phân tích tổng hợp.',suggestions:['Tình hình Paracetamol thế nào?','Thuốc nào tồn nhiều, bán chậm và gần hết hạn?','Thuốc nào chênh lệch giá nhập giữa các lô nhiều nhất?','Doanh thu tháng này là bao nhiêu?']},
+    pharmacist:{scope:'Phạm vi Dược sĩ: thuốc, lô, giá nhập, nhà cung cấp, hạn dùng, tồn kho, quy trình và hóa đơn cụ thể theo mã; không tra cứu doanh thu, danh sách hóa đơn tổng hợp hoặc phân quyền.',suggestions:['Tình hình Paracetamol thế nào?','Thuốc nào tồn nhiều, bán chậm và gần hết hạn?','Lô nào sẽ hết hạn trong 90 ngày tới?','Quy trình xử lý lô hết hạn']},
+    cashier:{scope:'Phạm vi Thu ngân: thuốc, giá bán, tồn/hạn, quy trình và hóa đơn cụ thể theo mã; không xem giá nhập, nhà cung cấp, doanh thu, biến động kho hoặc phân quyền.',suggestions:['Tình hình Paracetamol thế nào?','Thuốc nào đang dưới mức tồn tối thiểu?','Lô nào sẽ hết hạn trong 90 ngày tới?','Quy trình bán thuốc tại quầy']}
+  };
+  const currentRole=roleInfo[user.role]||roleInfo.cashier;
+  const suggestions=currentRole.suggestions;
   return <div className="ai-workspace session-only">
     <section className="chat-shell panel agent-chat">
       <div className="chat-head"><div className="ai-avatar"><Bot/></div><div><h2>An Tâm AI</h2><p>Tra cứu nội bộ</p></div><button type="button" className="new-chat" disabled={busy} onClick={fresh}>Làm mới</button><span className="agent-status">{busy?'Đang trả lời':'Sẵn sàng'}</span></div>
       <div className="chat-body" aria-live="polite">
-        {!messages.length&&<div className="ai-welcome"><div className="ai-avatar"><Sparkles size={30}/></div><h2>Tôi có thể giúp gì cho {user.name}?</h2><p>Hỏi về thuốc, tồn kho, doanh thu hoặc quy trình. Bạn có thể tiếp tục hỏi về cùng một thuốc trong cuộc trò chuyện.</p><div className="welcome-prompts">{suggestions.map(s=><button key={s} disabled={busy} onClick={()=>ask(null,s)}>{s}<span>↗</span></button>)}</div></div>}
+        {!messages.length&&<div className="ai-welcome"><div className="ai-avatar"><Sparkles size={30}/></div><h2>Tôi có thể giúp gì cho {user.name}?</h2><p>{currentRole.scope}</p><div className="welcome-prompts">{suggestions.map(s=><button key={s} disabled={busy} onClick={()=>ask(null,s)}>{s}<span>↗</span></button>)}</div></div>}
         {messages.map((m,i)=><div key={m.clientId||m.id||i} className={'chat-row '+m.role}><div className="chat-bubble">
           {m.role==='assistant'&&<div className="bubble-top"><div className="bubble-name"><Sparkles size={16}/> An Tâm AI</div><span className={'answer-mode '+(m.route||'direct')}>{m.route==='fallback'?'AI không khả dụng · dữ liệu đã tra cứu':m.model&&m.model!=='backend-direct'&&m.model!=='backend-fallback'?'Phân tích bằng AI':'Trợ lý nội bộ'}</span></div>}
           <div className="chat-text"><MarkdownMessage text={m.role==='assistant'?cleanAssistantText(m.content):m.content}/></div>

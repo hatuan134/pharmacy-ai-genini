@@ -21,8 +21,29 @@ TABLES = {
  'invoice_items': (m.InvoiceItem, 'id invoice_id batch_id medicine_name quantity sale_price purchase_price'),
 }
 
+ROLE_SCHEMA = {
+    'manager': {name: fields.split() for name, (_, fields) in TABLES.items()},
+    # Dược sĩ được phân tích động dữ liệu thuốc/kho/nhà cung cấp, nhưng không có
+    # bảng hóa đơn để suy ra doanh thu tổng hợp.
+    'pharmacist': {
+        'medicines': TABLES['medicines'][1].split(),
+        'categories': TABLES['categories'][1].split(),
+        'units': TABLES['units'][1].split(),
+        'suppliers': TABLES['suppliers'][1].split(),
+        'batches': TABLES['batches'][1].split(),
+    },
+    # Thu ngân không được cấp dynamic_query; schema này vẫn thu hẹp để tạo lớp
+    # bảo vệ thứ hai nếu hàm bị gọi trực tiếp trong tương lai.
+    'cashier': {
+        'medicines': TABLES['medicines'][1].split(),
+        'categories': TABLES['categories'][1].split(),
+        'units': TABLES['units'][1].split(),
+        'batches': ['id', 'medicine_id', 'code', 'expiry_date', 'quantity', 'sale_price'],
+    },
+}
+
 def schema(role):
-    return {name: cols.split() for name, (_, cols) in TABLES.items()}
+    return {name: list(cols) for name, cols in ROLE_SCHEMA.get(role, {}).items()}
 
 @contextmanager
 def snapshot_reader(db):
@@ -46,9 +67,12 @@ def run_query(db, sql, role):
     try:
         # A transaction snapshot from PostgreSQL; capped inputs are rejected, never
         # silently used to produce misleading aggregates.
+        allowed = schema(role)
+        if not allowed:
+            raise ValueError('Vai trò không có quyền phân tích dữ liệu động.')
         with snapshot_reader(db) as reader:
-            for name, (model, fields) in TABLES.items():
-                cols = fields.split()
+            for name, cols in allowed.items():
+                model = TABLES[name][0]
                 rows = reader.execute(select(*(getattr(model, c) for c in cols)).limit(10001)).all()
                 if len(rows) > 10000:
                     raise ValueError('Dữ liệu vượt giới hạn phân tích 10.000 dòng/bảng; hãy dùng báo cáo chuyên biệt.')
@@ -62,7 +86,6 @@ def run_query(db, sql, role):
                 con.executemany('INSERT INTO "'+name+'" VALUES ('+','.join('?' for _ in cols)+')', [tuple(value(v) for v in row) for row in rows])
         con.commit()
         con.execute('PRAGMA query_only=ON')
-        allowed = schema(role)
         def authorize(action, arg1, arg2, database, trigger):
             if action == sqlite3.SQLITE_SELECT: return sqlite3.SQLITE_OK
             if action == sqlite3.SQLITE_READ and arg1 in allowed and (arg2 in allowed[arg1] or arg2 == ''): return sqlite3.SQLITE_OK

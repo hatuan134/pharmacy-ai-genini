@@ -363,8 +363,58 @@ class ChatPlan(BaseModel):
     reason: str = ''
 
 
+AI_TOOL_PERMISSIONS = {
+    # Quản lý: toàn bộ dữ liệu nghiệp vụ AI được phép đọc.
+    'manager': {
+        'medicine_search', 'inventory_search', 'expiry_alerts', 'low_stock',
+        'stock_risk', 'procedures', 'sales_summary', 'system_data',
+    },
+    # Dược sĩ: nghiệp vụ thuốc/kho và hóa đơn chi tiết; không xem báo cáo doanh thu
+    # tổng hợp hay dữ liệu tài khoản/phân quyền qua AI.
+    'pharmacist': {
+        'medicine_search', 'inventory_search', 'expiry_alerts', 'low_stock',
+        'stock_risk', 'procedures', 'system_data',
+    },
+    # Thu ngân: tra cứu phục vụ bán hàng. Giá nhập, nhà cung cấp, báo cáo tổng hợp,
+    # biến động kho và tài khoản được chặn ở backend.
+    'cashier': {
+        'medicine_search', 'inventory_search', 'expiry_alerts', 'low_stock',
+        'procedures', 'system_data',
+    },
+}
+
+
 def _chat_allowed_tools(role):
-    return {'medicine_search', 'inventory_search', 'expiry_alerts', 'low_stock', 'stock_risk', 'procedures', 'sales_summary', 'system_data'}
+    return set(AI_TOOL_PERMISSIONS.get(role, set()))
+
+
+def _dynamic_query_allowed(role):
+    # Dynamic SQL chỉ mở cho Quản lý và Dược sĩ; schema của Dược sĩ được thu hẹp
+    # ở agent_query.py nên không thể truy vấn doanh thu/tài khoản bằng cách lách tool.
+    return role in {'manager', 'pharmacist'}
+
+
+def _role_access_denied_reason(question, role):
+    """Return a user-facing denial for data outside the current AI role scope."""
+    if role == 'manager':
+        return ''
+    s = plain(question)
+    if re.search(r'nhan vien|tai khoan|phan quyen|nguoi dung|user', s):
+        return 'Vai trò hiện tại không được phép tra cứu tài khoản hoặc phân quyền qua An Tâm AI.'
+    if re.search(r'doanh thu|tien ban|bao cao ban|doanh so|revenue|sales summary|loi nhuan', s):
+        return 'Chỉ Quản lý được phép tra cứu báo cáo doanh thu tổng hợp qua An Tâm AI.'
+    if re.search(r'hoa don|invoice', s) and not re.search(r'(?:hoa don|invoice)\s*#?\s*\d+', s):
+        return 'Qua An Tâm AI, Dược sĩ và Thu ngân chỉ được tra cứu một hóa đơn cụ thể theo mã; báo cáo hoặc danh sách hóa đơn tổng hợp thuộc quyền Quản lý.'
+    if role == 'cashier':
+        if re.search(r'gia nhap|purchase price|von hang|gia von', s):
+            return 'Thu ngân không được phép xem giá nhập hoặc giá vốn qua An Tâm AI.'
+        if re.search(r'nha cung cap|supplier', s):
+            return 'Thu ngân không được phép tra cứu thông tin nhà cung cấp qua An Tâm AI.'
+        if re.search(r'bien dong|lich su kho|movement|kiem ke', s):
+            return 'Thu ngân không được phép tra cứu biến động hoặc lịch sử điều chỉnh kho qua An Tâm AI.'
+        if re.search(r'ban cham|ton nhieu|nguy co|rui ro|luan chuyen|tieu thu|slow moving|risk', s):
+            return 'Phân tích tồn kho kết hợp lịch sử bán hàng chỉ dành cho Quản lý và Dược sĩ.'
+    return ''
 
 
 def _history_text(history):
@@ -520,8 +570,9 @@ def _tool_inventory_search(db, query, role):
             'days_left': r['days_left'], 'sale_price': str(r['sale_price']),
             'stock_status': 'Đã hết tồn' if r['quantity'] <= 0 else 'Còn hàng',
         }
-        item['purchase_price'] = str(r['purchase_price'])
-        item['supplier'] = r['supplier_name']
+        if role in {'manager', 'pharmacist'}:
+            item['purchase_price'] = str(r['purchase_price'])
+            item['supplier'] = r['supplier_name']
         data.append(item)
         sources.append({'id': f"batch:{r['id']}", 'title': f"{r['medicine_name']} · {r['code']}", 'reference': f"Lô #{r['id']}", 'kind': 'internal'})
     return data, sources
@@ -611,8 +662,15 @@ def _tool_sales(db, query):
     return data, [{'id': 'sales:summary', 'title': 'Báo cáo bán hàng nội bộ', 'reference': f'{start} → {end}', 'kind': 'internal'}]
 
 
-def _tool_system_data(db, query):
-    """Explicit business fields only: never credentials or session metadata."""
+SYSTEM_DATA_PERMISSIONS = {
+    'manager': {'suppliers', 'categories', 'units', 'users', 'invoices', 'invoice_items', 'movements'},
+    'pharmacist': {'suppliers', 'categories', 'units', 'invoices', 'invoice_items', 'movements'},
+    'cashier': {'categories', 'units', 'invoices', 'invoice_items'},
+}
+
+
+def _tool_system_data(db, query, role):
+    """Role-filtered business fields only; never credentials/session metadata."""
     q = plain(query)
     catalogs = {
         'suppliers': (Supplier, ['id', 'name', 'phone', 'address', 'active']),
@@ -623,17 +681,30 @@ def _tool_system_data(db, query):
         'invoice_items': (InvoiceItem, ['id', 'invoice_id', 'batch_id', 'medicine_name', 'quantity', 'sale_price', 'purchase_price']),
         'movements': (Movement, ['id', 'batch_id', 'user_id', 'delta', 'balance', 'kind', 'reason', 'created_at']),
     }
+    allowed = SYSTEM_DATA_PERMISSIONS.get(role, set())
     keys = []
+    matched_catalog_intent = False
     for pattern, names in [(r'nha cung cap', ['suppliers']), (r'nhom thuoc', ['categories']),
-                           (r'don vi', ['units']), (r'nhan vien|tai khoan|phan quyen', ['users']),
+                           (r'don vi', ['units']), (r'nhan vien|tai khoan|phan quyen|nguoi dung', ['users']),
                            (r'hoa don', ['invoices', 'invoice_items']), (r'bien dong|lich su kho', ['movements'])]:
-        if re.search(pattern, q): keys.extend(names)
-    if not keys: keys = list(catalogs)
+        if re.search(pattern, q):
+            matched_catalog_intent = True
+            keys.extend(name for name in names if name in allowed)
+    # Nếu câu hỏi nhắm đúng một danh mục nhưng vai trò không có quyền, không được
+    # fallback sang các bảng khác vì có thể tạo câu trả lời gây hiểu nhầm.
+    if matched_catalog_intent and not keys:
+        return {}, []
+    if not keys:
+        keys = [key for key in catalogs if key in allowed]
     data, sources = {}, []
     for key in keys:
         model, fields = catalogs[key]
+        if role == 'cashier' and key == 'invoice_items':
+            fields = [field for field in fields if field != 'purchase_price']
         stmt = select(model)
         match = re.search(r'(?:hoa don|invoice)\s*#?\s*(\d+)', q)
+        if key in ('invoices', 'invoice_items') and role != 'manager' and not match:
+            continue
         if match and key in ('invoices', 'invoice_items'):
             column = Invoice.id if key == 'invoices' else InvoiceItem.invoice_id
             stmt = stmt.where(column == int(match.group(1)))
@@ -641,14 +712,19 @@ def _tool_system_data(db, query):
         rows = list(db.scalars(stmt.order_by(model.id.desc()).limit(100)))
         data[key] = {'total': total, 'shown': len(rows), 'truncated': total > len(rows),
                      'rows': [{field: getattr(row, field) for field in fields} for row in rows]}
-        sources.append({'id': 'system:' + key, 'title': key, 'reference': 'Dữ liệu hệ thống', 'kind': 'internal'})
+        sources.append({'id': 'system:' + key, 'title': key, 'reference': 'Dữ liệu hệ thống theo quyền vai trò', 'kind': 'internal'})
     return data, sources
 
 
 def execute_chat_tools(db, plan, user):
     results = []
     sources = []
+    allowed = _chat_allowed_tools(user.role)
     for call in plan.calls:
+        # Enforcement lives here as a second layer: even a forged/model-generated
+        # plan cannot execute a tool outside the authenticated role.
+        if call.name not in allowed:
+            continue
         if call.name == 'medicine_search':
             data, src = _tool_medicine_search(db, call.query)
         elif call.name == 'inventory_search':
@@ -664,7 +740,7 @@ def execute_chat_tools(db, plan, user):
         elif call.name == 'sales_summary':
             data, src = _tool_sales(db, call.query)
         elif call.name == 'system_data':
-            data, src = _tool_system_data(db, call.query)
+            data, src = _tool_system_data(db, call.query, user.role)
         else:
             continue
         results.append({'tool': call.name, 'data': data})
@@ -908,6 +984,12 @@ def _record_chat(db, request, user, text, status, sources, tools, model):
 
 
 def _prepare_legacy_chat(db, request, user):
+    denied = _role_access_denied_reason(request.message, user.role)
+    if denied:
+        return {
+            'terminal': True, 'message': denied, 'status': 'access_denied',
+            'results': [], 'sources': [], 'used_tools': [], 'needs_ai': False,
+        }
     if _external_lookup_requested(request.message):
         message = (
             'Chức năng tra cứu thông tin thuốc từ Internet đã được tắt. '
