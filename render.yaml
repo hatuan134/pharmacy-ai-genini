@@ -4,7 +4,7 @@ databases:
 
 services:
   - type: web
-    name: pharmacy-ai-v2
+    name: an-tam
     runtime: docker
     plan: free
     healthCheckPath: /api/health
