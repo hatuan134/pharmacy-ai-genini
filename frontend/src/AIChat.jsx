@@ -44,7 +44,18 @@ export default function AIChat({user,MarkdownMessage}){
     await ask(null,messages[index-1].content,messages.slice(0,index-1));
   }
   function vote(m,value){setMessages(old=>old.map(x=>x.id===m.id?{...x,feedback:x.feedback===value?0:value}:x))}
-  function cleanAssistantText(text){return String(text??'').replace(/^\s*\*\s+/gm,'- ').replace(/\*/g,'')}
+  function cleanAssistantText(text){
+    return String(text??'')
+      .replace(/^\s*\*\s+/gm,'- ')
+      .replace(/\*/g,'')
+      .replace(/^\s*[-•]\s*Tình hình các lô\s*:?\s*$/gmi,'### Các lô hiện tại')
+      .replace(/^\s*Tình hình các lô\s*:?\s*$/gmi,'### Các lô hiện tại')
+      .replace(/^\s*[-•]\s*Các lô hiện tại\s*:?\s*$/gmi,'### Các lô hiện tại')
+      .replace(/^\s*[-•]\s*Các lô còn hàng\s*:?\s*$/gmi,'### Các lô còn hàng')
+      .replace(/^\s*[-•]\s*Lô đã hết tồn\s*:?\s*$/gmi,'### Lô đã hết tồn')
+      .replace(/^\s*[-•]\s*Cảnh báo\s*:?\s*$/gmi,'### Cảnh báo')
+      .replace(/^\s*[-•]\s*Đề xuất xử lý\s*:?\s*$/gmi,'### Đề xuất xử lý')
+  }
   async function copy(m){try{await navigator.clipboard.writeText(cleanAssistantText(m.content));setCopied(m.id);setTimeout(()=>setCopied(null),1800)}catch{setError('Không thể sao chép tự động. Bạn có thể chọn nội dung và nhấn Ctrl+C.')}}
   const suggestions=['Tình hình Paracetamol thế nào?','Thuốc nào tồn nhiều, bán chậm và gần hết hạn?','Thuốc nào chênh lệch giá nhập giữa các lô nhiều nhất?','Quy trình xử lý lô hết hạn'];
   return <div className="ai-workspace session-only">
@@ -53,8 +64,8 @@ export default function AIChat({user,MarkdownMessage}){
       <div className="chat-body" aria-live="polite">
         {!messages.length&&<div className="ai-welcome"><div className="ai-avatar"><Sparkles size={30}/></div><h2>Tôi có thể giúp gì cho {user.name}?</h2><p>Hỏi về thuốc, tồn kho, doanh thu hoặc quy trình. Bạn có thể tiếp tục hỏi về cùng một thuốc trong cuộc trò chuyện.</p><div className="welcome-prompts">{suggestions.map(s=><button key={s} disabled={busy} onClick={()=>ask(null,s)}>{s}<span>↗</span></button>)}</div></div>}
         {messages.map((m,i)=><div key={m.clientId||m.id||i} className={'chat-row '+m.role}><div className="chat-bubble">
-          {m.role==='assistant'&&<div className="bubble-top"><div className="bubble-name"><Sparkles size={16}/> An Tâm AI</div><span className={'answer-mode '+(m.route||'direct')}>{m.route==='fallback'?'AI không khả dụng · dữ liệu đã tra cứu':m.model&&m.model!=='backend-direct'&&m.model!=='backend-fallback'?'AI · '+m.model:'Trợ lý nội bộ'}</span></div>}
-          <div className="chat-text"><MarkdownMessage text={m.content}/></div>
+          {m.role==='assistant'&&<div className="bubble-top"><div className="bubble-name"><Sparkles size={16}/> An Tâm AI</div><span className={'answer-mode '+(m.route||'direct')}>{m.route==='fallback'?'AI không khả dụng · dữ liệu đã tra cứu':m.model&&m.model!=='backend-direct'&&m.model!=='backend-fallback'?'Phân tích bằng AI':'Trợ lý nội bộ'}</span></div>}
+          <div className="chat-text"><MarkdownMessage text={m.role==='assistant'?cleanAssistantText(m.content):m.content}/></div>
           {m.streaming&&!m.content&&<p className="agent-working">{activity||'Đang chuẩn bị phản hồi…'}</p>}
           {m.tools?.length>0&&<div className="tool-chips"><b>Đã tra cứu:</b>{m.tools.map(t=><span key={t}><Database size={13}/>{toolNames[t]||t}</span>)}</div>}
           {m.sources?.length>0&&<details className="chat-sources"><summary>Nguồn dữ liệu · {m.sources.length}</summary><div>{m.sources.map((s,j)=><span key={s.id+j}><Database size={13}/>{s.title}<small>{s.reference}</small></span>)}</div></details>}

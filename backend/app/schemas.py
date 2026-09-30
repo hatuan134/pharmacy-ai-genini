@@ -31,7 +31,8 @@ class NameIn(Input):
     name: Name
 
 class SupplierIn(NameIn):
-    phone: str = Field(default='', max_length=30)
+    # Số điện thoại nhà cung cấp chỉ nhận chữ số để tránh dữ liệu sai kiểu.
+    phone: str = Field(min_length=9, max_length=11, pattern=r'^[0-9]+$')
     address: str = Field(default='', max_length=300)
     active: bool = True
 

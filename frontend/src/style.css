@@ -371,3 +371,13 @@ tbody tr:hover{background:#f8fbff}
 @media(max-width:760px){.ai-workspace{display:flex;flex-direction:column;gap:12px}.conversation-sidebar{width:100%;height:auto;min-height:0}.ai-side-brand,.conversation-sidebar>small{display:none}.conversation-list{max-height:150px;padding:0}.conversation-list section>button{padding:7px}.conversation-list h3{margin:10px 5px 4px}.agent-chat{width:100%;height:75vh;min-height:480px}.agent-chat .chat-head{padding:14px}.agent-chat .chat-composer{margin:10px}.ai-welcome{margin:20px 0}.ai-welcome h2{font-size:21px}.agent-status{display:none}}
 
 .session-only{display:block;max-width:1150px}.session-only .chat-head .new-chat{margin-left:auto;padding:8px 12px}.session-only .agent-status{margin-left:12px}.password-control{display:block;position:relative;width:100%}.password-control input{padding-right:48px!important;width:100%}.password-eye{position:absolute;right:10px;top:50%;transform:translateY(-50%);display:flex;align-items:center;justify-content:center;width:32px;height:32px;background:transparent;border:0;border-radius:6px;color:#506c85;cursor:pointer}.password-eye:hover{background:#eaf2ff;color:#0760bf}.password-eye:focus-visible{outline:2px solid #1264ca}.review-medicine-content{white-space:pre-wrap;overflow-wrap:anywhere;max-height:45vh;overflow:auto;padding:18px;background:#f5f8fc;border:1px solid #dce5ee;border-radius:10px;line-height:1.7}
+
+
+/* Supplier data quality + robust table wrapping */
+.field-hint{margin-top:-3px;color:#74869b;font-size:10px;line-height:1.5}
+.table-scroll{max-width:100%;overflow-x:auto}
+.table-scroll table{min-width:760px}
+th,td{vertical-align:middle}
+td,.cell-text,.cell-title{overflow-wrap:anywhere;word-break:break-word}
+.cell-text,.cell-title{display:block;max-width:100%}
+.invalid-data{color:#b83c43;font-weight:700}
